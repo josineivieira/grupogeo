@@ -82,7 +82,7 @@ export const employeeSchema = z
     professionalNotes: opt,
   })
   .strict();
-const fields: Field[] = [
+export const fields: Field[] = [
   { key: 'registration', label: 'Matrícula', required: true, section: 'Profissional' },
   { key: 'name', label: 'Nome completo', required: true, section: 'Pessoal' },
   { key: 'socialName', label: 'Nome social', section: 'Pessoal' },

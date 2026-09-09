@@ -18,7 +18,7 @@ import { z } from 'zod';
 import { Permission } from './auth';
 import { AuthRequest, Database, assertPermission, audit, ok, parse } from './core';
 import { catalogs, CatalogService } from './catalog';
-import { employeeSchema, EmployeeService } from './employees';
+import { employeeSchema, EmployeeService, fields as employeeFields } from './employees';
 const allowed = [
   'employees',
   'contacts',
@@ -57,7 +57,7 @@ export class ImportController {
     private readonly employees: EmployeeService,
     private readonly catalog: CatalogService,
   ) {}
-  @Get('template/:kind') template(
+  @Get('template/:kind') async template(
     @Param('kind') kind: string,
     @Res() res: Response,
     @Req() req: AuthRequest,
@@ -68,10 +68,32 @@ export class ImportController {
       kind === 'employees'
         ? Object.keys(employeeSchema.shape)
         : Object.keys(catalogs[kind].schema.shape);
-    res
-      .type('text/csv; charset=utf-8')
-      .attachment(`modelo-${kind}.csv`)
-      .send('\uFEFF' + keys.join(';') + '\r\n');
+    const fields = kind === 'employees' ? employeeFields : catalogs[kind].fields;
+    const book = new Workbook();
+    const sheet = book.addWorksheet('Dados');
+    sheet.columns = keys.map((key) => {
+      const field = fields.find((f) => f.key === key);
+      if (!field) throw new Error(`Campo sem tradução no modelo: ${key}`);
+      return { header: field.label, key, width: Math.max(20, field.label.length + 4), style: { numFmt: '@' } };
+    });
+    sheet.views = [{ state: 'frozen', ySplit: 1 }];
+    sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF16324F' } };
+    const instructions = book.addWorksheet('Instruções');
+    instructions.columns = [{ header: 'Coluna', key: 'label', width: 30 }, { header: 'Preenchimento', key: 'help', width: 85 }];
+    for (const key of keys) {
+      const field = fields.find((f) => f.key === key)!;
+      instructions.addRow({ label: field.label, help: [
+        field.required ? 'Obrigatório.' : 'Opcional ou com valor padrão.',
+        field.reference ? 'Informe o identificador (UUID) do cadastro relacionado.' : '',
+        field.type === 'date' ? 'Use AAAA-MM-DD (ex.: 2026-09-09).' : '',
+        'Preencha os registros na aba Dados, a partir da linha 2.',
+      ].filter(Boolean).join(' ') });
+    }
+    const names: Record<string, string> = { employees: 'funcionarios', contacts: 'contatos', companies: 'empresas', branches: 'filiais', departments: 'departamentos', sectors: 'setores', positions: 'cargos', benefits: 'beneficios' };
+    res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .attachment(`modelo-${names[kind]}.xlsx`)
+      .send(Buffer.from(await book.xlsx.writeBuffer()));
   }
   @Post('read')
   @ApiConsumes('multipart/form-data')

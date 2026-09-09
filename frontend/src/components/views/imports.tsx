@@ -77,18 +77,18 @@ export function ImportView() {
           <Button
             variant="outline"
             onClick={() =>
-              void download(`/imports/template/${kind}`, `modelo-${kind}.csv`).catch((e) =>
+              void download(`/imports/template/${kind}`, `modelo-${kind}.xlsx`).catch((e) =>
                 toast.error(e.message),
               )
             }
           >
-            Baixar modelo
+            Baixar modelo Excel
           </Button>
           <input
             type="file"
             accept=".csv,.xlsx"
             aria-label="Selecionar planilha"
-            disabled={busy}
+            disabled={busy || !fields}
             onChange={async (e) => {
               const file = e.target.files?.[0];
               if (!file) return;
@@ -106,7 +106,7 @@ export function ImportView() {
                 setRows(r.data.rows);
                 setMapping(
                   Object.fromEntries(
-                    r.data.headers.map((h) => [h, fields?.some((f) => f.key === h) ? h : '']),
+                    r.data.headers.map((h) => [h, fields?.find((f) => f.key === h || f.label.trim().toLocaleLowerCase('pt-BR') === h.trim().toLocaleLowerCase('pt-BR'))?.key ?? '']),
                   ),
                 );
               } catch (err) {

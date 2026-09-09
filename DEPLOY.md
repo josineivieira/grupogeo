@@ -1,98 +1,53 @@
-# Render + Supabase
+﻿# Deploy: Static Site + API no Render
 
-O `render.yaml` cria dois Web Services Node: API NestJS e frontend Next.js.
-Os dois usam computação paga; a API também usa um disco de 1 GB para anexos e fotos.
-Revise o custo exibido pelo Render antes de confirmar a criação.
-O PostgreSQL fica no Supabase. O projeto usa autenticação própria, sem Supabase Auth.
+O frontend agora gera arquivos estáticos em `frontend/out`. O backend permanece NestJS no Web Service e o banco permanece no Supabase.
 
-## 1. Banco
+## Migrar o frontend existente
 
-No projeto Supabase, abra **Connect** e copie as conexões dos poolers:
+1. No Render, crie **New > Static Site** usando o repositório `josineivieira/grupogeo`, branch `main`.
+2. Nome sugerido: `geo-rh-site`. Deixe Root Directory vazio.
+3. Build Command: `npm ci --include=dev && npm run build -w frontend`.
+4. Publish Directory: `frontend/out`. Não existe Start Command no Static Site.
+5. Variáveis: NODE_VERSION=24.19.0, NODE_ENV=production, NEXT_PUBLIC_API_URL=/api.
+6. Cadastre em Redirects/Rewrites, nesta ordem:
 
-- `DATABASE_URL`: Transaction pooler, porta 6543. Acrescente `?pgbouncer=true&connection_limit=1&sslmode=require`.
-- `DIRECT_URL`: Session pooler, porta 5432. Acrescente `?sslmode=require`.
-
-Use o host e o usuário exatos fornecidos pelo painel. Substitua o marcador de senha
-pela senha do banco, sem os colchetes. Caracteres especiais da senha precisam de
-codificação URL. Se a URL já tiver parâmetros, acrescente os novos com `&`.
-O Session pooler permite executar as migrations por IPv4.
-Prefira um projeto vazio: as migrations criam as tabelas no schema public.
-Se houver dados/tabelas preexistentes, revise a compatibilidade antes do deploy.
-Como o acesso é feito exclusivamente pelo backend via Prisma, desative a Data API
-nas configurações do Supabase se não a utiliza em outra integração.
-
-## 2. Publicar o código
-
-Envie este projeto para um repositório GitHub/GitLab/Bitbucket, incluindo
-`render.yaml`, `package-lock.json` e `backend/prisma/migrations`.
-Não envie `.env`, `node_modules`, `.local` ou uploads.
-No Render, selecione **New > Blueprint**, conecte o repositório e revise os serviços.
-Mantenha Root Directory vazio: os comandos usam os workspaces da raiz.
-
-Preencha as variáveis solicitadas:
-
-| Serviço | Variável | Valor |
+| Source | Destination | Action |
 | --- | --- | --- |
-| API | DATABASE_URL | Transaction pooler do Supabase |
-| API | DIRECT_URL | Session pooler do Supabase |
-| API | DATA_ENCRYPTION_KEY | Chave aleatória de 64 caracteres hexadecimais |
-| API | CORS_ORIGIN | URL HTTPS do frontend, sem barra final |
-| API | WEB_URL | Mesma URL do frontend |
-| Frontend | API_INTERNAL_URL | URL HTTPS da API, sem `/api` e sem barra final |
+| /api/* | https://geo-rh-api.onrender.com/api/* | Rewrite |
+| /* | /index.html | Rewrite |
 
-Para gerar DATA_ENCRYPTION_KEY no seu computador:
+Use Rewrite, não Redirect. A primeira regra encaminha a API mantendo cookies no domínio do site; a segunda permite abrir e atualizar rotas como `/employees/UUID`.
+API_INTERNAL_URL não é mais utilizada. Se a URL real da API for diferente, ajuste a primeira regra.
 
-```sh
-node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
-```
+## Backend
 
-Guarde essa chave: alterá-la impede a leitura dos dados já criptografados.
-Se estiver migrando um banco existente, preserve sua DATA_ENCRYPTION_KEY atual.
-JWT_SECRET é gerado pelo Render. PORT é fornecida automaticamente.
-Não coloque credenciais do banco em variáveis NEXT_PUBLIC_*.
+Mantenha o Web Service `geo-rh-api` e selecione Compute pago no painel para evitar suspensão por inatividade. Confira o custo antes de confirmar.
 
-Os nomes dos serviços não garantem o endereço final. Se ainda não tiver as URLs,
-preencha as previstas e, após criar os serviços, copie as URLs reais exibidas no
-Render e corrija CORS_ORIGIN, WEB_URL e API_INTERNAL_URL. Faça novo deploy do frontend
-após mudar API_INTERNAL_URL: o Next.js grava os rewrites durante o build.
-NEXT_PUBLIC_API_URL deve permanecer `/api`, para os cookies funcionarem no domínio
-do frontend. O Next.js encaminha essas requisições à API.
+- Build: `npm ci --include=dev && npm run db:generate && npm run build -w backend`
+- Pre-Deploy (serviço pago): `npm run db:migrate`
+- Start: `npm run start -w backend`
+- Health Check: `/api/healthz`
 
-## 3. Primeiro acesso
+Mantenha DATABASE_URL, DIRECT_URL, JWT_SECRET e DATA_ENCRYPTION_KEY existentes. Não recrie o banco nem execute seed para esta migração.
+Altere CORS_ORIGIN e WEB_URL para a URL HTTPS real do NOVO Static Site, sem barra final. Mantenha COOKIE_SECURE=true.
+Essas duas variáveis precisam acompanhar a mudança de domínio para a renovação da sessão funcionar.
+Para anexos, use disco persistente montado em /var/data/uploads e UPLOAD_DIR=/var/data/uploads. O banco não guarda os arquivos físicos.
 
-As migrations são aplicadas automaticamente no pre-deploy da API. Não execute
-`migrate reset` ou `db push` no banco de produção.
+## Validar antes de desativar o frontend antigo
 
-Depois do primeiro deploy, adicione temporariamente à API:
+1. Abra a URL do novo site seguida de `/api/healthz`: deve retornar JSON com status ready, não a página HTML.
+2. Entre com seu usuário existente. Troque a senha se o sistema solicitar.
+3. Abra funcionários e uma ficha, atualize a página e use voltar/avançar do navegador.
+4. Atualize a página após entrar e confirme a recuperação da sessão.
+5. Confira um upload e download.
+6. Só após validar, suspenda/exclua o Web Service antigo `geo-rh-web` pelo painel, para deixar apenas a API como servidor pago. O agente não excluiu esse serviço.
 
-- `SEED_ADMIN_EMAIL`: seu e-mail de administrador.
-- `SEED_ADMIN_PASSWORD`: senha inicial exclusiva com pelo menos 12 caracteres.
+O render.yaml descreve API paga e um novo Static Site chamado geo-rh-site. Não converte automaticamente o Web Service antigo. Se a API já for gerenciada por Blueprint, revise as alterações antes de sincronizar.
+Esta mudança reduz servidores e evita remontar a aplicação a cada navegação; não garante resolver lentidão de consultas ao banco.
 
-No **Shell** da API Render, a partir da raiz do projeto, execute uma vez:
+## Desenvolvimento
 
-```sh
-npm run db:seed
-```
+`npm run dev:web` inicia o Next para desenvolvimento na raiz `/`; navegação interna usa History API. Para validar acesso direto a rotas profundas, utilize o export com fallback SPA ou Docker.
+O Docker do frontend serve os arquivos com Nginx e fallback para index.html.
 
-Esse comando inicializa permissões, ambientes, configurações e o administrador.
-Também ativa acesso ao ambiente RH para usuários existentes; use-o na inicialização
-de um banco novo, não automaticamente a cada deploy. Não altera a senha de um
-administrador que já existe. Remova as duas variáveis depois da inicialização.
-Entre pelo frontend e troque a senha no primeiro acesso.
-
-## 4. Conferência
-
-1. Abra `https://URL-DA-API/api/healthz` e confirme status `ready`.
-2. Abra `https://URL-DO-FRONTEND/api/healthz` para conferir o encaminhamento.
-3. Entre no sistema, recarregue a página e confirme que continua autenticado.
-4. Envie um anexo, reinicie a API e confirme que ainda consegue baixá-lo.
-
-Recuperação de senha exige configurar na API SMTP_HOST, SMTP_PORT, SMTP_USER,
-SMTP_PASSWORD e SMTP_FROM, além de WEB_URL.
-O disco persiste arquivos apenas em `/var/data/uploads`; este projeto ainda não
-usa Supabase Storage. Faça backup do banco e dos arquivos separadamente.
-
-Referências: [Render Blueprint](https://render.com/docs/blueprint-spec),
-[discos persistentes](https://render.com/docs/disks),
-[conexões Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres),
-[rewrites Next.js](https://nextjs.org/docs/app/api-reference/config/next-config-js/rewrites).
+Referências: https://render.com/docs/static-sites e https://render.com/docs/redirects-rewrites.

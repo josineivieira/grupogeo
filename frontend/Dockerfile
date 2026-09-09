@@ -9,13 +9,7 @@ ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build -w frontend
-FROM node:24-bookworm-slim AS runner
-WORKDIR /app
-ENV NODE_ENV=production
-ENV HOSTNAME=0.0.0.0
-ENV PORT=3000
-COPY --from=build --chown=node:node /app/frontend/.next/standalone ./
-COPY --from=build --chown=node:node /app/frontend/.next/static ./frontend/.next/static
-USER node
+FROM nginx:stable-alpine AS runner
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/frontend/out /usr/share/nginx/html
 EXPOSE 3000
-CMD ["node", "frontend/server.js"]

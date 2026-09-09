@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Actor, api, display, Field, Row, send, statusLabel } from '@/lib/api';
 import { ArrowLeft, ArrowLeftRight, Pencil } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useRouter } from '@/lib/navigation';
 import { Button, ErrorBox, Loading, Modal } from '../ui';
 import { RecordForm } from '../record-form';
 import { DataTable } from '../data-table';

@@ -34,11 +34,17 @@ services:
       - key: UPLOAD_DIR
         value: /var/data/uploads
   - type: web
-    name: geo-rh-web
-    runtime: node
-    plan: 0.5c-512mb
+    name: geo-rh-site
+    runtime: static
     buildCommand: npm ci --include=dev && npm run build -w frontend
-    startCommand: npm run start -w frontend
+    staticPublishPath: frontend/out
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: https://geo-rh-api.onrender.com/api/*
+      - type: rewrite
+        source: /*
+        destination: /index.html
     envVars:
       - key: NODE_VERSION
         value: 24.19.0
@@ -46,5 +52,3 @@ services:
         value: production
       - key: NEXT_PUBLIC_API_URL
         value: /api
-      - key: API_INTERNAL_URL
-        sync: false

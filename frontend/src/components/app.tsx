@@ -540,11 +540,15 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
               setError('');
               try {
                 if (mode === 'login') {
-                  const r = await api<{ accessToken: string }>(
+                  const r = await api<{ accessToken: string; mustChangePassword: boolean }>(
                     '/auth/login',
                     send('POST', { email, password }),
                   );
                   setToken(r.data.accessToken);
+                  if (r.data.mustChangePassword) {
+                    await onLogin();
+                    return;
+                  }
                   const available = await api<Environment[]>('/auth/environments');
                   if (!available.data.length) {
                     setError('Seu usuário não possui acesso a nenhum ambiente ativo. Entre em contato com o administrador.');

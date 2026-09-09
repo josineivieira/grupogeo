@@ -1,0 +1,10 @@
+import { createCipheriv,createDecipheriv,randomBytes } from 'crypto';
+import { z } from 'zod';
+import { Prisma } from '@prisma/client';
+export const securitySchema=z.object({sessionMinutes:z.number().int().min(5).max(480),refreshDays:z.number().int().min(1).max(30),maxAttempts:z.number().int().min(3).max(20),lockMinutes:z.number().int().min(1).max(1440),passwordExpiryDays:z.number().int().min(0).max(365),minPasswordLength:z.number().int().min(10).max(64)}).strict();
+export const defaultSecurity={sessionMinutes:30,refreshDays:7,maxAttempts:5,lockMinutes:15,passwordExpiryDays:90,minPasswordLength:10};
+export async function securityPolicy(db:Prisma.TransactionClient){const row=await db.systemSetting.findUnique({where:{key:'security'}});return securitySchema.parse(row?.value??defaultSecurity);}
+function key(){const value=process.env.DATA_ENCRYPTION_KEY;if(!value||!/^[a-f0-9]{64}$/i.test(value))throw new Error('DATA_ENCRYPTION_KEY deve conter 64 caracteres hexadecimais.');return Buffer.from(value,'hex');}
+export function encrypt(value:string){if(!value)return value;const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key(),iv);const ciphertext=Buffer.concat([cipher.update(value,'utf8'),cipher.final()]);return `enc:v1:${iv.toString('hex')}:${cipher.getAuthTag().toString('hex')}:${ciphertext.toString('hex')}`;}
+export function decrypt(value:string){if(!value.startsWith('enc:v1:'))return value;const [,,iv,tag,data]=value.split(':');const decipher=createDecipheriv('aes-256-gcm',key(),Buffer.from(iv,'hex'));decipher.setAuthTag(Buffer.from(tag,'hex'));return Buffer.concat([decipher.update(Buffer.from(data,'hex')),decipher.final()]).toString('utf8');}
+export function protectBank<T extends Record<string,unknown>>(data:T,mode:'encrypt'|'decrypt'):T{const result={...data};for(const field of ['agency','account','pix','holderCpf']){const value=data[field];if(typeof value==='string')Object.assign(result,{[field]:mode==='encrypt'?encrypt(value):decrypt(value)});}return result;}

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1006 300" role="img" aria-labelledby="title desc">
+  <title id="title">Grupo Geo OTM</title>
+  <desc id="desc">Logotipo Grupo Geo OTM com dois chevrons verde e lilas</desc>
+  <polygon points="610,48 670,48 775,150 670,252 610,252 715,150" fill="#9bd6ba"/>
+  <polygon points="740,48 800,48 905,150 800,252 740,252 845,150" fill="#9a86d8"/>
+  <text x="24" y="178" fill="#9bd6ba" font-family="Arial, Helvetica, sans-serif" font-size="116" font-weight="700" letter-spacing="-6">Grupo</text>
+  <text x="330" y="178" fill="#9a86d8" font-family="Arial, Helvetica, sans-serif" font-size="116" font-weight="700" letter-spacing="-6">Geo</text>
+  <text x="842" y="266" fill="#707070" font-family="Arial, Helvetica, sans-serif" font-size="35" font-weight="400">OTM</text>
+</svg>

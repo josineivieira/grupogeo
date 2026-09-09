@@ -1,0 +1,21 @@
+import { BadRequestException,Body,Controller,Get,Param,Post,Req,Res,UploadedFile,UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth,ApiConsumes,ApiTags } from '@nestjs/swagger';
+import { Response } from 'express';
+import { randomUUID } from 'crypto';
+import { mkdir,writeFile,unlink } from 'fs/promises';
+import { resolve } from 'path';
+import { z } from 'zod';
+import { AuthRequest,Database,assertPermission,audit,ok,parse } from './core';
+import { EmployeeService } from './employees';
+import { Public } from './auth';
+const root=()=>resolve(process.env.UPLOAD_DIR??'uploads');
+@ApiTags('Identidade visual') @Controller()
+export class AssetController {
+  constructor(private readonly db:Database,private readonly employees:EmployeeService){}
+  @Get('branding') @Public() async branding(){const row=await this.db.systemSetting.findUnique({where:{key:'general'}});const settings=(row?.value??{}) as Record<string,unknown>;return ok({name:settings.name??'GRUPO GEO',primaryColor:settings.primaryColor??'#163b60',logoId:settings.logoId??null,faviconId:settings.faviconId??null});}
+  @Post('assets/:category') @ApiBearerAuth() @ApiConsumes('multipart/form-data') @UseInterceptors(FileInterceptor('file',{limits:{fileSize:2*1024*1024,files:1}}))
+  async upload(@Param('category') raw:string,@Body('employeeId') employeeId:string|undefined,@UploadedFile() file:Express.Multer.File,@Req() req:AuthRequest){const category=parse(z.enum(['USER_PHOTO','EMPLOYEE_PHOTO','LOGO','FAVICON']),raw);if(category==='EMPLOYEE_PHOTO'){assertPermission(req.actor,'employees.update');if(!employeeId)throw new BadRequestException('Informe o funcionário.');await this.employees.find(employeeId,req.actor);}if(['LOGO','FAVICON'].includes(category))assertPermission(req.actor,'settings.update');if(!file)throw new BadRequestException('Selecione uma imagem PNG ou JPEG de até 2 MB.');const png=file.buffer.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])),jpeg=file.buffer[0]===255&&file.buffer[1]===216&&file.buffer[2]===255;if(!png&&!jpeg)throw new BadRequestException('Formato inválido. Use PNG ou JPEG.');const storageKey=`${randomUUID()}.${png?'png':'jpg'}`;await mkdir(root(),{recursive:true});await writeFile(resolve(root(),storageKey),file.buffer,{flag:'wx'});try{return await this.db.$transaction(async tx=>{const asset=await tx.visualAsset.create({data:{ownerId:req.actor.id,employeeId:category==='EMPLOYEE_PHOTO'?employeeId:undefined,category,mimeType:png?'image/png':'image/jpeg',storageKey,size:file.size}});if(category==='USER_PHOTO')await tx.user.update({where:{id:req.actor.id},data:{photoId:asset.id}});if(category==='EMPLOYEE_PHOTO')await tx.employee.update({where:{id:employeeId},data:{photoId:asset.id}});if(['LOGO','FAVICON'].includes(category)){const settings=await tx.systemSetting.findUniqueOrThrow({where:{key:'general'}});await tx.systemSetting.update({where:{key:'general'},data:{value:{...(settings.value as object),[category==='LOGO'?'logoId':'faviconId']:asset.id},updatedBy:req.actor.id}});}await audit(tx,req,'UPLOAD','assets',asset.id,undefined,{category});return ok({id:asset.id},'Imagem atualizada.');});}catch(error){await unlink(resolve(root(),storageKey));throw error;}}
+  @Get('assets/public/:id') @Public() async publicImage(@Param('id') id:string,@Res() response:Response){const asset=await this.db.visualAsset.findFirst({where:{id:parse(z.uuid(),id),category:{in:['LOGO','FAVICON']}}});if(!asset)throw new BadRequestException('Imagem indisponível.');response.type(asset.mimeType).sendFile(resolve(root(),asset.storageKey));}
+  @Get('assets/:id') @ApiBearerAuth() async image(@Param('id') id:string,@Req() req:AuthRequest,@Res() response:Response){const asset=await this.db.visualAsset.findUnique({where:{id:parse(z.uuid(),id)}});if(!asset)throw new BadRequestException('Imagem indisponível.');if(asset.employeeId){assertPermission(req.actor,'employees.view');await this.employees.find(asset.employeeId,req.actor);}else if(asset.ownerId!==req.actor.id&&!['LOGO','FAVICON'].includes(asset.category))throw new BadRequestException('Imagem fora do seu escopo.');await audit(this.db,req,'VISUALIZACAO','assets',asset.id);response.setHeader('Cache-Control','no-store');response.type(asset.mimeType).sendFile(resolve(root(),asset.storageKey));}
+}

@@ -1,0 +1,747 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id String @id @default(uuid()) @db.Uuid
+  name String
+  email String @unique
+  passwordHash String
+  isActive Boolean @default(true)
+  mustChangePassword Boolean @default(true)
+  failedAttempts Int @default(0)
+  lockedUntil DateTime?
+  lastLoginAt DateTime?
+  passwordChangedAt DateTime @default(now())
+  theme String @default("light")
+  photoId String? @db.Uuid
+  allCompanies Boolean @default(false)
+  employeeId String? @unique @db.Uuid
+  employee Employee? @relation(fields: [employeeId], references: [id])
+  roles UserRole[]
+  environmentAccesses UserEnvironmentAccess[]
+  environmentRoles UserEnvironmentRole[]
+  companies UserCompanyAccess[]
+  branches UserBranchAccess[]
+  sessions Session[]
+  resets PasswordResetToken[]
+  assets VisualAsset[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+}
+model Environment {
+  id String @id @default(uuid()) @db.Uuid
+  code String @unique
+  slug String @unique
+  name String
+  description String
+  icon String
+  sortOrder Int @default(0)
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userAccesses UserEnvironmentAccess[]
+  userRoles UserEnvironmentRole[]
+  sessions Session[]
+  auditLogs AuditLog[]
+}
+model UserEnvironmentAccess {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  environmentId String @db.Uuid
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id])
+  environment Environment @relation(fields: [environmentId], references: [id])
+  @@unique([userId, environmentId])
+  @@index([environmentId, isActive])
+}
+model UserEnvironmentRole {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  environmentId String @db.Uuid
+  roleId String @db.Uuid
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id])
+  environment Environment @relation(fields: [environmentId], references: [id])
+  role Role @relation(fields: [roleId], references: [id])
+  @@unique([userId, environmentId, roleId])
+  @@index([userId, environmentId])
+}
+model Role {
+  id String @id @default(uuid()) @db.Uuid
+  name String @unique
+  users UserRole[]
+  environmentUsers UserEnvironmentRole[]
+  permissions RolePermission[]
+}
+model Permission {
+  id String @id @default(uuid()) @db.Uuid
+  code String @unique
+  roles RolePermission[]
+}
+model UserRole {
+  userId String @db.Uuid
+  roleId String @db.Uuid
+  user User @relation(fields: [userId], references: [id])
+  role Role @relation(fields: [roleId], references: [id])
+  @@id([userId, roleId])
+}
+model RolePermission {
+  roleId String @db.Uuid
+  permissionId String @db.Uuid
+  role Role @relation(fields: [roleId], references: [id])
+  permission Permission @relation(fields: [permissionId], references: [id])
+  @@id([roleId, permissionId])
+}
+model UserCompanyAccess {
+  userId String @db.Uuid
+  companyId String @db.Uuid
+  user User @relation(fields: [userId], references: [id])
+  company Company @relation(fields: [companyId], references: [id])
+  @@id([userId, companyId])
+}
+model UserBranchAccess {
+  userId String @db.Uuid
+  branchId String @db.Uuid
+  user User @relation(fields: [userId], references: [id])
+  branch Branch @relation(fields: [branchId], references: [id])
+  @@id([userId, branchId])
+}
+model Session {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id])
+  environmentId String? @db.Uuid
+  environment Environment? @relation(fields: [environmentId], references: [id])
+  tokenHash String @unique
+  ip String
+  userAgent String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([userId, expiresAt])
+  @@index([environmentId])
+  lastSeenAt DateTime @default(now())
+}
+model PasswordResetToken {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id])
+  tokenHash String @unique
+  expiresAt DateTime
+  usedAt DateTime?
+}
+model Company {
+  id String @id @default(uuid()) @db.Uuid
+  name String
+  legalName String
+  cnpj String @unique
+  email String?
+  phone String?
+  address Json?
+  stateRegistration String?
+  municipalRegistration String?
+  website String?
+  logoId String? @db.Uuid
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  branches Branch[]
+  departments Department[]
+  costCenters CostCenter[]
+  employees Employee[]
+  accesses UserCompanyAccess[]
+}
+model Branch {
+  id String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+  company Company @relation(fields: [companyId], references: [id])
+  name String
+  code String
+  cnpj String @unique
+  email String?
+  phone String?
+  address Json?
+  responsible String?
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  employees Employee[]
+  sectors Sector[]
+  costCenters CostCenter[]
+  accesses UserBranchAccess[]
+  @@unique([companyId, code])
+}
+model Department {
+  id String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+  company Company @relation(fields: [companyId], references: [id])
+  name String
+  code String
+  responsible String?
+  description String?
+  isActive Boolean @default(true)
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  sectors Sector[]
+  positions JobPosition[]
+  employees Employee[]
+  @@unique([companyId, code])
+}
+model Sector {
+  id String @id @default(uuid()) @db.Uuid
+  name String
+  code String
+  departmentId String @db.Uuid
+  department Department @relation(fields: [departmentId], references: [id])
+  branchId String @db.Uuid
+  branch Branch @relation(fields: [branchId], references: [id])
+  description String?
+  responsible String?
+  isActive Boolean @default(true)
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  employees Employee[]
+  @@unique([branchId, code])
+}
+model JobPosition {
+  id String @id @default(uuid()) @db.Uuid
+  name String
+  cbo String?
+  departmentId String @db.Uuid
+  department Department @relation(fields: [departmentId], references: [id])
+  description String?
+  level String?
+  salaryMin Decimal? @db.Decimal(14,2)
+  salaryMax Decimal? @db.Decimal(14,2)
+  responsibilities String?
+  requirements String?
+  education String?
+  isActive Boolean @default(true)
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  employees Employee[]
+}
+model CostCenter {
+  id String @id @default(uuid()) @db.Uuid
+  code String
+  name String
+  companyId String @db.Uuid
+  company Company @relation(fields: [companyId], references: [id])
+  branchId String? @db.Uuid
+  branch Branch? @relation(fields: [branchId], references: [id])
+  responsible String?
+  isActive Boolean @default(true)
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  employees Employee[]
+  @@unique([companyId, code])
+}
+model WorkSchedule {
+  id String @id @default(uuid()) @db.Uuid
+  name String
+  startTime String
+  endTime String
+  breakMinutes Int
+  weeklyHours Decimal @db.Decimal(5,2)
+  scale String
+  weekdays String
+  notes String?
+  isActive Boolean @default(true)
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  employees Employee[]
+}
+enum EmployeeStatus {
+  ACTIVE
+  PROBATION
+  ON_LEAVE
+  ON_VACATION
+  LICENSE
+  NOTICE
+  TERMINATED
+  SUSPENDED
+  INACTIVE
+}
+model Employee {
+  id String @id @default(uuid()) @db.Uuid
+  registration String
+  name String
+  socialName String?
+  cpf String @unique
+  rg String?
+  rgIssuer String?
+  rgState String?
+  rgIssuedAt DateTime? @db.Date
+  pis String?
+  birthDate DateTime @db.Date
+  sex String?
+  maritalStatus String?
+  nationality String?
+  birthplace String?
+  motherName String?
+  fatherName String?
+  education String?
+  email String?
+  phone String?
+  whatsapp String?
+  bloodType String?
+  notes String?
+  photoId String? @db.Uuid
+  companyId String @db.Uuid
+  company Company @relation(fields: [companyId], references: [id])
+  branchId String @db.Uuid
+  branch Branch @relation(fields: [branchId], references: [id])
+  departmentId String @db.Uuid
+  department Department @relation(fields: [departmentId], references: [id])
+  sectorId String? @db.Uuid
+  sector Sector? @relation(fields: [sectorId], references: [id])
+  jobPositionId String @db.Uuid
+  jobPosition JobPosition @relation(fields: [jobPositionId], references: [id])
+  managerId String? @db.Uuid
+  manager Employee? @relation("Management", fields: [managerId], references: [id])
+  team Employee[] @relation("Management")
+  costCenterId String? @db.Uuid
+  costCenter CostCenter? @relation(fields: [costCenterId], references: [id])
+  workScheduleId String? @db.Uuid
+  workSchedule WorkSchedule? @relation(fields: [workScheduleId], references: [id])
+  admissionDate DateTime @db.Date
+  contractType String
+  contractStart DateTime? @db.Date
+  contractEnd DateTime? @db.Date
+  workLocation String?
+  workMode String @default("PRESENCIAL")
+  salary Decimal @db.Decimal(14,2)
+  salaryType String @default("MENSAL")
+  unionName String?
+  professionalNotes String?
+  status EmployeeStatus @default(ACTIVE)
+  terminationDate DateTime? @db.Date
+  terminationReason String?
+  isActive Boolean @default(true)
+  deletedAt DateTime?
+  deletedBy String? @db.Uuid
+  createdBy String @db.Uuid
+  updatedBy String @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User?
+  address EmployeeAddress?
+  bankAccount EmployeeBankAccount?
+  contacts EmergencyContact[]
+  dependents Dependent[]
+  documents EmployeeDocument[]
+  benefits EmployeeBenefit[]
+  allowances EmployeeAllowance[]
+  movements EmployeeMovement[]
+  salaries SalaryHistory[]
+  accruals VacationAccrualPeriod[]
+  vacations VacationPeriod[]
+  health OccupationalHealthExam[]
+  leaves LeaveOfAbsence[]
+  admissions AdmissionProcess[]
+  terminations Termination[]
+  experiences ExperienceContract[]
+  alerts Alert[]
+  files FileAttachment[]
+  assets VisualAsset[]
+  @@unique([companyId, registration])
+  @@index([companyId, branchId, status])
+  @@index([managerId])
+  @@index([name])
+}
+model EmployeeAddress {
+  id String @id @default(uuid()) @db.Uuid
+  employeeId String @unique @db.Uuid
+  employee Employee @relation(fields: [employeeId], references: [id])
+  postalCode String
+  street String
+  number String
+  complement String?
+  district String
+  city String
+  state String
+  country String @default("Brasil")
+}
+model EmployeeBankAccount {
+  id String @id @default(uuid()) @db.Uuid
+  employeeId String @unique @db.Uuid
+  employee Employee @relation(fields: [employeeId], references: [id])
+  bank String
+  bankCode String
+  agency String
+  account String
+  digit String
+  type String
+  pix String?
+  holder String
+  holderCpf String
+}
+model EmergencyContact {
+  id String @id @default(uuid()) @db.Uuid
+  employeeId String @db.Uuid
+  employee Employee @relation(fields: [employeeId], references: [id])
+  name String
+  relationship String
+  phone String
+  secondaryPhone String?
+  email String?
+  notes String?
+  primary Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  @@index([employeeId])
+}
+model Dependent {
+  id String @id @default(uuid()) @db.Uuid
+  employeeId String @db.Uuid
+  employee Employee @relation(fields: [employeeId], references: [id])
+  name String
+  cpf String?
+  birthDate DateTime @db.Date
+  relationship String
+  incomeTax Boolean @default(false)
+  healthPlan Boolean @default(false)
+  notes String?
+  fileId String? @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  @@index([employeeId])
+}
+model EmployeeDocument {
+  id String @id @default(uuid()) @db.Uuid
+  employeeId String @db.Uuid
+  employee Employee @relation(fields: [employeeId], references: [id])
+  name String
+  type String
+  number String?
+  issuedAt DateTime? @db.Date
+  expiresAt DateTime? @db.Date
+  fileId String? @db.Uuid
+  file FileAttachment? @relation(fields: [fileId], references: [id])
+  status String @default("PENDENTE")
+  notes String?
+  createdBy String @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  @@index([employeeId, expiresAt])
+}
+model EmployeeBenefit {
+  id String @id @default(uuid()) @db.Uuid
+  employeeId String @db.Uuid
+  employee Employee @relation(fields: [employeeId], references: [id])
+  type String
+  name String
+  value Decimal @db.Decimal(14,2)
+  provider String?
+  startDate DateTime @db.Date
+  endDate DateTime? @db.Date
+  notes String?
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  @@index([employeeId])
+}
+model EmployeeAllowance {
+  id String @id @default(uuid()) @db.Uuid
+  employeeId String @db.Uuid
+  employee Employee @relation(fields: [employeeId], references: [id])
+  type String
+  percentage Decimal? @db.Decimal(7,4)
+  value Decimal @db.Decimal(14,2)
+  startDate DateTime @db.Date
+  endDate DateTime? @db.Date
+  notes String?
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  @@index([employeeId])
+}
+model EmployeeMovement {
+  id String @id @default(uuid()) @db.Uuid
+  employeeId String @db.Uuid
+  employee Employee @relation(fields: [employeeId], references: [id])
+  type String
+  effectiveDate DateTime @db.Date
+  before Json
+  after Json
+  reason String
+  notes String?
+  createdBy String @db.Uuid
+  createdAt DateTime @default(now())
+  deletedAt DateTime?
+  @@index([employeeId, effectiveDate])
+}
+model SalaryHistory {
+  id String @id @default(uuid()) @db.Uuid
+  employeeId String @db.Uuid
+  employee Employee @relation(fields: [employeeId], references: [id])
+  previousSalary Decimal @db.Decimal(14,2)
+  newSalary Decimal @db.Decimal(14,2)
+  type String
+  reason String
+  effectiveDate DateTime @db.Date
+  createdBy String @db.Uuid
+  createdAt DateTime @default(now())
+  @@index([employeeId, effectiveDate])
+}
+enum VacationStatus {
+  REQUESTED
+  MANAGER_APPROVED
+  APPROVED
+  REJECTED
+  CANCELLED
+  COMPLETED
+}
+model VacationAccrualPeriod {
+  id String @id @default(uuid()) @db.Uuid
+  employeeId String @db.Uuid
+  employee Employee @relation(fields: [employeeId], references: [id])
+  startDate DateTime @db.Date
+  endDate DateTime @db.Date
+  deadline DateTime @db.Date
+  acquiredDays Int @default(30)
+  absences Int @default(0)
+  reducedDays Int @default(0)
+  vacations VacationPeriod[]
+  createdAt DateTime @default(now())
+  @@unique([employeeId, startDate])
+}
+model VacationPeriod {
+  id String @id @default(uuid()) @db.Uuid
+  employeeId String @db.Uuid
+  employee Employee @relation(fields: [employeeId], references: [id])
+  accrualId String @db.Uuid
+  accrual VacationAccrualPeriod @relation(fields: [accrualId], references: [id])
+  startDate DateTime @db.Date
+  endDate DateTime @db.Date
+  returnDate DateTime @db.Date
+  days Int
+  soldDays Int @default(0)
+  advance13 Boolean @default(false)
+  status VacationStatus @default(REQUESTED)
+  notes String?
+  createdBy String @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  approvals VacationApproval[]
+  @@index([employeeId, startDate, endDate])
+}
+model VacationApproval {
+  id String @id @default(uuid()) @db.Uuid
+  vacationId String @db.Uuid
+  vacation VacationPeriod @relation(fields: [vacationId], references: [id])
+  approverId String @db.Uuid
+  action String
+  comment String
+  createdAt DateTime @default(now())
+}
+model OccupationalHealthExam {
+  id String @id @default(uuid()) @db.Uuid
+  employeeId String @db.Uuid
+  employee Employee @relation(fields: [employeeId], references: [id])
+  category String
+  type String
+  examDate DateTime @db.Date
+  expiresAt DateTime? @db.Date
+  clinic String
+  doctor String?
+  crm String?
+  result String
+  restrictions String?
+  cid String?
+  licenseCategory String?
+  examCode String?
+  fileId String? @db.Uuid
+  notes String?
+  createdBy String @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  @@index([employeeId, expiresAt])
+}
+model LeaveOfAbsence {
+  id String @id @default(uuid()) @db.Uuid
+  employeeId String @db.Uuid
+  employee Employee @relation(fields: [employeeId], references: [id])
+  type String
+  startDate DateTime @db.Date
+  expectedReturn DateTime @db.Date
+  actualReturn DateTime? @db.Date
+  reason String
+  notes String?
+  fileId String? @db.Uuid
+  status String @default("PROGRAMADO")
+  createdBy String @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  @@index([employeeId, startDate])
+}
+model AdmissionProcess {
+  id String @id @default(uuid()) @db.Uuid
+  employeeId String @db.Uuid
+  employee Employee @relation(fields: [employeeId], references: [id])
+  status String @default("PRE_CADASTRO")
+  notes String?
+  createdBy String @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  checklist AdmissionChecklist[]
+}
+model AdmissionChecklist {
+  id String @id @default(uuid()) @db.Uuid
+  admissionId String @db.Uuid
+  admission AdmissionProcess @relation(fields: [admissionId], references: [id])
+  name String
+  responsible String?
+  deadline DateTime? @db.Date
+  completedAt DateTime?
+  notes String?
+  fileId String? @db.Uuid
+}
+model Termination {
+  id String @id @default(uuid()) @db.Uuid
+  employeeId String @db.Uuid
+  employee Employee @relation(fields: [employeeId], references: [id])
+  communicationDate DateTime @db.Date
+  effectiveDate DateTime @db.Date
+  type String
+  reason String
+  initiative String
+  noticeType String?
+  noticeEnd DateTime? @db.Date
+  interview String?
+  status String @default("EM_ANDAMENTO")
+  createdBy String @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  checklist TerminationChecklist[]
+}
+model TerminationChecklist {
+  id String @id @default(uuid()) @db.Uuid
+  terminationId String @db.Uuid
+  termination Termination @relation(fields: [terminationId], references: [id])
+  name String
+  responsible String?
+  deadline DateTime? @db.Date
+  completedAt DateTime?
+  notes String?
+  fileId String? @db.Uuid
+}
+model ExperienceContract {
+  id String @id @default(uuid()) @db.Uuid
+  employeeId String @db.Uuid
+  employee Employee @relation(fields: [employeeId], references: [id])
+  startDate DateTime @db.Date
+  firstEnd DateTime @db.Date
+  secondEnd DateTime? @db.Date
+  alertDays Int @default(15)
+  result String @default("EM_EXPERIENCIA")
+  notes String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+}
+model Alert {
+  id String @id @default(uuid()) @db.Uuid
+  key String @unique
+  employeeId String @db.Uuid
+  employee Employee @relation(fields: [employeeId], references: [id])
+  title String
+  description String
+  category String
+  priority String
+  dueDate DateTime @db.Date
+  status String @default("ABERTO")
+  readAt DateTime?
+  snoozedUntil DateTime?
+  link String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([employeeId, status, dueDate])
+}
+model Notification {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  title String
+  description String
+  readAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([userId, readAt])
+}
+model AuditLog {
+  id String @id @default(uuid()) @db.Uuid
+  userId String? @db.Uuid
+  environmentId String? @db.Uuid
+  environment Environment? @relation(fields: [environmentId], references: [id])
+  action String
+  module String
+  recordId String?
+  before Json?
+  after Json?
+  ip String
+  userAgent String
+  reason String?
+  createdAt DateTime @default(now())
+  @@index([userId, createdAt])
+  @@index([module, recordId])
+  @@index([environmentId, createdAt])
+}
+model SystemSetting {
+  key String @id
+  value Json
+  updatedAt DateTime @updatedAt
+  updatedBy String? @db.Uuid
+}
+model FileAttachment {
+  id String @id @default(uuid()) @db.Uuid
+  employeeId String @db.Uuid
+  employee Employee @relation(fields: [employeeId], references: [id])
+  name String
+  storageKey String @unique
+  mimeType String
+  size Int
+  category String
+  createdBy String @db.Uuid
+  createdAt DateTime @default(now())
+  deletedAt DateTime?
+  documents EmployeeDocument[]
+  @@index([employeeId])
+}
+
+model VisualAsset {
+  id String @id @default(uuid()) @db.Uuid
+  ownerId String @db.Uuid
+  owner User @relation(fields:[ownerId],references:[id])
+  employeeId String? @db.Uuid
+  employee Employee? @relation(fields:[employeeId],references:[id])
+  category String
+  mimeType String
+  storageKey String @unique
+  size Int
+  createdAt DateTime @default(now())
+  @@index([ownerId,category])
+}

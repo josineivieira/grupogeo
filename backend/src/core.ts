@@ -5,16 +5,25 @@ import {
   HttpException,
   Injectable,
   OnModuleInit,
+  OnApplicationShutdown,
   BadRequestException,
 } from '@nestjs/common';
 import { Prisma, PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
+import { databaseUrlWithPoolLimit } from './database-config';
 
 @Injectable()
-export class Database extends PrismaClient implements OnModuleInit {
+export class Database extends PrismaClient implements OnModuleInit, OnApplicationShutdown {
+  constructor() {
+    const url = process.env.DATABASE_URL;
+    super(url ? { datasources: { db: { url: databaseUrlWithPoolLimit(url) } } } : {});
+  }
   async onModuleInit() {
     await this.$connect();
+  }
+  async onApplicationShutdown() {
+    await this.$disconnect();
   }
 }
 export interface Actor {

@@ -49,6 +49,7 @@ const actorSessionInclude = {
 type ActorSession = Prisma.SessionGetPayload<{ include: typeof actorSessionInclude }>;
 async function buildActor(db: Database, sessionId: string, userId: string, loadedSession?: ActorSession): Promise<Actor> {
   const session = loadedSession ?? await db.session.findFirstOrThrow({
+    relationLoadStrategy: 'join',
     where: { id: sessionId, userId },
     include: actorSessionInclude,
   });
@@ -57,6 +58,7 @@ async function buildActor(db: Database, sessionId: string, userId: string, loade
   const isGlobalSuperAdmin = legacyRoles.includes('Superadministrador');
   const environmentRoles = session.environmentId
     ? await db.userEnvironmentRole.findMany({
+        relationLoadStrategy: 'join',
         where: { userId, environmentId: session.environmentId },
         include: { role: { include: { permissions: { include: { permission: true } } } } },
       })
@@ -120,6 +122,7 @@ export class AuthGuard implements CanActivate {
     )
       throw new UnauthorizedException();
     const session = await this.db.session.findFirst({
+      relationLoadStrategy: 'join',
       where: { id: claims.sid, userId: claims.sub, revokedAt: null, expiresAt: { gt: new Date() } },
       include: actorSessionInclude,
     });

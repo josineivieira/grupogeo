@@ -21,6 +21,7 @@ import { sign, verify } from 'jsonwebtoken';
 import type { Response } from 'express';
 import { createTransport } from 'nodemailer';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { Actor, AuthRequest, Database, audit, ok, parse } from './core';
 import { securityPolicy } from './security';
 
@@ -41,10 +42,15 @@ export function jwtSecret() {
     throw new Error('JWT_SECRET deve ter pelo menos 32 caracteres.');
   return secret;
 }
-async function buildActor(db: Database, sessionId: string, userId: string): Promise<Actor> {
-  const session = await db.session.findFirstOrThrow({
+const actorSessionInclude = {
+  user: { include: { roles: { include: { role: { include: { permissions: { include: { permission: true } } } } } }, companies: true, branches: true } },
+  environment: true,
+} satisfies Prisma.SessionInclude;
+type ActorSession = Prisma.SessionGetPayload<{ include: typeof actorSessionInclude }>;
+async function buildActor(db: Database, sessionId: string, userId: string, loadedSession?: ActorSession): Promise<Actor> {
+  const session = loadedSession ?? await db.session.findFirstOrThrow({
     where: { id: sessionId, userId },
-    include: { user: { include: { roles: { include: { role: { include: { permissions: { include: { permission: true } } } } } }, companies: true, branches: true } }, environment: true },
+    include: actorSessionInclude,
   });
   const u = session.user;
   const legacyRoles = u.roles.map((r) => r.role.name);
@@ -115,17 +121,7 @@ export class AuthGuard implements CanActivate {
       throw new UnauthorizedException();
     const session = await this.db.session.findFirst({
       where: { id: claims.sid, userId: claims.sub, revokedAt: null, expiresAt: { gt: new Date() } },
-      include: {
-        user: {
-          include: {
-            roles: {
-              include: { role: { include: { permissions: { include: { permission: true } } } } },
-            },
-            companies: true,
-            branches: true,
-          },
-        },
-      },
+      include: actorSessionInclude,
     });
     if (!session || !session.user.isActive || session.user.deletedAt)
       throw new UnauthorizedException('Sua sessão foi encerrada.');
@@ -140,7 +136,7 @@ export class AuthGuard implements CanActivate {
       u.mustChangePassword=true;
       await this.db.user.update({where:{id:u.id},data:{mustChangePassword:true}});
     }
-    req.actor = await buildActor(this.db, session.id, u.id);
+    req.actor = await buildActor(this.db, session.id, u.id, session);
     if (
       u.mustChangePassword &&
       !['/api/auth/me', '/api/auth/change-password', '/api/auth/logout'].includes(req.path)

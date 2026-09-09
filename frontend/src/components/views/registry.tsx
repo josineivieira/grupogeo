@@ -542,6 +542,10 @@ export function Registry({
       </div>
       {q.isLoading || catalogs.isLoading ? (
         <Loading />
+      ) : catalogs.error ? (
+        <ErrorBox error={catalogs.error} retry={() => void catalogs.refetch()} />
+      ) : employee && employeeFields.error ? (
+        <ErrorBox error={employeeFields.error} retry={() => void employeeFields.refetch()} />
       ) : q.error ? (
         <ErrorBox error={q.error} retry={() => void q.refetch()} />
       ) : !employee && !catalog ? (

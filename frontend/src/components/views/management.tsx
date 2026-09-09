@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Bell, Download, Plus, Printer, ShieldCheck } from 'lucide-react';
-import { Actor, api, display, download, Environment, Row, send } from '@/lib/api';
+import { Actor, ApiError, api, display, download, Environment, Row, send } from '@/lib/api';
 import { Button, ErrorBox, Loading, Modal } from '../ui';
 import { DataTable } from '../data-table';
 import { RecordForm } from '../record-form';
@@ -399,12 +399,18 @@ function UserForm({
   save: (data: unknown) => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
   return (
     <form
       className="record-form"
       onSubmit={async (e) => {
         e.preventDefault();
         const data = new FormData(e.currentTarget);
+        setValidationErrors([]);
+        if (!data.getAll('roleIds').length) {
+          setValidationErrors(['Selecione pelo menos um perfil na seção Perfis, além dos acessos por ambiente.']);
+          return;
+        }
         setBusy(true);
         try {
           await save({
@@ -422,7 +428,12 @@ function UserForm({
             isActive: data.has('isActive'),
           });
         } catch (err) {
-          toast.error((err as Error).message);
+          const labels: Record<string, string> = { name: 'Nome', email: 'E-mail', password: 'Senha temporária', roleIds: 'Perfis', environmentRoles: 'Acessos por ambiente', companyIds: 'Empresas', branchIds: 'Filiais' };
+          const messages = err instanceof ApiError && err.fields.length
+            ? err.fields.map((field) => `${labels[field.field.split('.')[0]] ?? 'Campo'}: ${field.message}`)
+            : [(err as Error).message];
+          setValidationErrors(messages);
+          toast.error(messages[0]);
         } finally {
           setBusy(false);
         }
@@ -431,7 +442,7 @@ function UserForm({
       <div className="form-grid">
         <label>
           Nome
-          <input required name="name" defaultValue={initial?.name} />
+          <input required name="name" minLength={3} defaultValue={initial?.name} />
         </label>
         <label>
           E-mail
@@ -440,7 +451,8 @@ function UserForm({
         {!initial && (
           <label>
             Senha temporária
-            <input required type="password" name="password" minLength={10} />
+            <input required type="password" name="password" minLength={10} maxLength={72} autoComplete="new-password" />
+            <small>Use de 10 a 72 caracteres, com maiúscula, minúscula, número e símbolo.</small>
           </label>
         )}
         <label className="checkbox-label">
@@ -461,6 +473,7 @@ function UserForm({
         </label>
       </div>
       <h3>Perfis</h3>
+      <p>Selecione ao menos um perfil nesta seção. Os acessos por ambiente são configurados abaixo.</p>
       <div className="permissions-grid">
         {roles.map((r) => (
           <label key={r.id}>
@@ -529,6 +542,7 @@ function UserForm({
           </label>
         ))}
       </div>
+      {validationErrors.length > 0 && <div className="error-box" role="alert"><strong>Não foi possível salvar o usuário</strong><ul>{validationErrors.map((message, index) => <li key={index}>{message}</li>)}</ul></div>}
       <div className="form-footer">
         <Button disabled={busy}>{busy ? 'Salvando…' : 'Salvar acesso'}</Button>
       </div>

@@ -16,20 +16,20 @@ import { Permission } from './auth';
 import { AuthRequest, Database, audit, ok, pagination, parse, json } from './core';
 import { vacationRules } from './vacations';
 import { securitySchema } from './security';
-const userDto = z
+export const userDto = z
   .object({
-    name: z.string().min(3),
-    email: z.email().transform((v) => v.toLowerCase()),
+    name: z.string().trim().min(3, 'Informe um nome com pelo menos 3 caracteres.'),
+    email: z.email('Informe um e-mail válido.').transform((v) => v.toLowerCase()),
     password: z
       .string()
-      .min(10)
-      .max(72)
-      .regex(/[A-Z]/)
-      .regex(/[a-z]/)
-      .regex(/\d/)
-      .regex(/[^A-Za-z0-9]/)
+      .min(10, 'A senha deve ter pelo menos 10 caracteres.')
+      .max(72, 'A senha deve ter no máximo 72 caracteres.')
+      .regex(/[A-Z]/, 'Inclua uma letra maiúscula na senha.')
+      .regex(/[a-z]/, 'Inclua uma letra minúscula na senha.')
+      .regex(/\d/, 'Inclua um número na senha.')
+      .regex(/[^A-Za-z0-9]/, 'Inclua um símbolo na senha.')
       .optional(),
-    roleIds: z.array(z.uuid()).min(1),
+    roleIds: z.array(z.uuid()).min(1, 'Selecione pelo menos um perfil na seção Perfis, além dos acessos por ambiente.'),
     environmentRoles: z.array(z.object({ environmentId: z.uuid(), roleIds: z.array(z.uuid()).min(1) })).default([]),
     companyIds: z.array(z.uuid()),
     branchIds: z.array(z.uuid()),

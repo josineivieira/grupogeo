@@ -36,6 +36,7 @@ import {
 } from './core';
 import { Field } from './catalog';
 import { protectBank } from './security';
+import { addressSchema } from './employee-address';
 const opt = z.string().max(4000).optional(),
   uuid = z.uuid();
 export const employeeSchema = z
@@ -363,14 +364,15 @@ export class EmployeeService {
     if (data.contractStart && data.contractEnd && data.contractEnd < data.contractStart)
       throw new BadRequestException('Fim do contrato deve ser posterior ao início.');
   }
-  async create(body: unknown, req: AuthRequest) {
+  async create(body: unknown, req: AuthRequest, address?: unknown) {
     assertPermission(req.actor, 'employees.view_personal');
     assertPermission(req.actor, 'employees.update_salary');
     const data = parse(employeeSchema, body);
+    const addressData = address === undefined ? undefined : parse(addressSchema, address);
     return this.db.$transaction(async (tx) => {
       await this.relations({ ...data, salary: new Prisma.Decimal(data.salary) }, req.actor, tx);
       const e = await tx.employee.create({
-        data: { ...data, createdBy: req.actor.id, updatedBy: req.actor.id },
+        data: { ...data, createdBy: req.actor.id, updatedBy: req.actor.id, ...(addressData ? { address: { create: addressData } } : {}) },
       });
       await tx.salaryHistory.create({
         data: {
@@ -586,24 +588,7 @@ export class EmployeeController {
   ) {
     assertPermission(req.actor, 'employees.view_personal');
     await this.service.find(id, req.actor);
-    const dto = parse(
-      z
-        .object({
-          postalCode: z
-            .string()
-            .transform((v) => v.replace(/\D/g, ''))
-            .refine((v) => v.length === 8, 'CEP inválido.'),
-          street: z.string().min(1),
-          number: z.string().min(1),
-          complement: opt,
-          district: z.string().min(1),
-          city: z.string().min(1),
-          state: z.string().length(2),
-          country: z.string().default('Brasil'),
-        })
-        .strict(),
-      body,
-    );
+    const dto = parse(addressSchema, body);
     return this.db.$transaction(async (tx) => {
       const before = await tx.employeeAddress.findUnique({ where: { employeeId: id } });
       const after = await tx.employeeAddress.upsert({

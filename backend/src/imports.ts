@@ -17,8 +17,17 @@ import type { Response } from 'express';
 import { z } from 'zod';
 import { Permission } from './auth';
 import { AuthRequest, Database, assertPermission, audit, ok, parse } from './core';
-import { catalogs, CatalogService } from './catalog';
+import { catalogs, CatalogService, Field } from './catalog';
 import { employeeSchema, EmployeeService, fields as employeeFields } from './employees';
+import { addressSchema, addressFields, splitEmployeeImport } from './employee-address';
+const employeeImportFields: Field[] = [...employeeFields, ...addressFields];
+export const employeeImportSchema = employeeSchema.extend(Object.fromEntries(addressFields.map((field) => [field.key, z.string().optional()]))).superRefine((row, ctx) => {
+  const { address } = splitEmployeeImport(row);
+  if (address) {
+    const result = addressSchema.safeParse(address);
+    if (!result.success) for (const issue of result.error.issues) ctx.addIssue({ code: 'custom', path: issue.path, message: issue.message });
+  }
+});
 const allowed = [
   'employees',
   'contacts',
@@ -57,6 +66,10 @@ export class ImportController {
     private readonly employees: EmployeeService,
     private readonly catalog: CatalogService,
   ) {}
+  @Get('fields/employees') importFields(@Req() req: AuthRequest) {
+    assertPermission(req.actor, 'employees.create');
+    return ok(employeeImportFields);
+  }
   @Get('template/:kind') async template(
     @Param('kind') kind: string,
     @Res() res: Response,
@@ -66,9 +79,9 @@ export class ImportController {
     assertPermission(req.actor, `${kind}.create`);
     const keys =
       kind === 'employees'
-        ? Object.keys(employeeSchema.shape)
+        ? [...Object.keys(employeeSchema.shape), ...addressFields.map((field) => field.key)]
         : Object.keys(catalogs[kind].schema.shape);
-    const fields = kind === 'employees' ? employeeFields : catalogs[kind].fields;
+    const fields = kind === 'employees' ? employeeImportFields : catalogs[kind].fields;
     const book = new Workbook();
     const sheet = book.addWorksheet('Dados');
     sheet.columns = keys.map((key) => {
@@ -84,7 +97,7 @@ export class ImportController {
     for (const key of keys) {
       const field = fields.find((f) => f.key === key)!;
       instructions.addRow({ label: field.label, help: [
-        field.required ? 'Obrigatório.' : 'Opcional ou com valor padrão.',
+        addressFields.some((address) => address.key === key) && kind === 'employees' ? 'Endereço opcional. Se preencher algum campo, informe CEP, logradouro, número, bairro, cidade e UF. País padrão: Brasil.' : field.required ? 'Obrigatório.' : 'Opcional ou com valor padrão.',
         field.reference ? 'Informe o identificador (UUID) do cadastro relacionado.' : '',
         field.type === 'date' ? 'Use AAAA-MM-DD (ex.: 2026-09-09).' : '',
         'Preencha os registros na aba Dados, a partir da linha 2.',
@@ -132,7 +145,7 @@ export class ImportController {
   @Post('validate') async validate(@Body() body: unknown, @Req() req: AuthRequest) {
     const dto = parse(importDto, body);
     assertPermission(req.actor, `${dto.kind}.create`);
-    const schema = dto.kind === 'employees' ? employeeSchema : catalogs[dto.kind].schema.strict();
+    const schema = dto.kind === 'employees' ? employeeImportSchema : catalogs[dto.kind].schema.strict();
     const errors: {
       line: number;
       field: string;
@@ -200,7 +213,7 @@ export class ImportController {
         const clean = Object.fromEntries(Object.entries(row).filter(([, v]) => v !== ''));
         const result =
           dto.kind === 'employees'
-            ? await this.employees.create(clean, req)
+            ? await this.employees.create(splitEmployeeImport(clean).employee, req, splitEmployeeImport(clean).address)
             : await this.catalog.save(dto.kind, undefined, clean, req);
         results.push({ line: i + 2, success: true, id: String(result.data.id) });
       } catch (error) {

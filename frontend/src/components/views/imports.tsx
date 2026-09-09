@@ -25,8 +25,9 @@ export function ImportView() {
     [busy, setBusy] = useState(false);
   const catalogs = useQuery({ queryKey: ['catalogs'], queryFn: () => api<Catalog[]>('/catalogs') });
   const employeeFields = useQuery({
-    queryKey: ['employee-fields'],
-    queryFn: () => api<Field[]>('/employees/fields'),
+    queryKey: ['employee-import-fields'],
+    enabled: kind === 'employees',
+    queryFn: () => api<Field[]>('/imports/fields/employees'),
   });
   const fields =
     kind === 'employees'

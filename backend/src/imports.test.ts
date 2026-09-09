@@ -3,6 +3,7 @@ import { Workbook } from 'exceljs';
 import { ImportController } from './imports';
 import type { AuthRequest } from './core';
 import type { Response } from 'express';
+import { addressFields, addressSchema, splitEmployeeImport } from './employee-address';
 
 describe('Excel import templates', () => {
   for (const kind of ['employees', 'contacts', 'companies', 'branches', 'departments', 'sectors', 'positions', 'benefits']) {
@@ -21,6 +22,7 @@ describe('Excel import templates', () => {
       expect(sheet.rowCount).toBe(1);
       expect(book.getWorksheet('Instruções')).toBeDefined();
       if (kind === 'employees') {
+        for (const field of addressFields) expect(sheet.getRow(1).values).toContain(field.label);
         expect(sheet.getRow(1).values).toContain('Matrícula');
         expect(sheet.getRow(1).values).toContain('Nome completo');
       }
@@ -29,4 +31,18 @@ describe('Excel import templates', () => {
       expect(result.data.rows[0][result.data.headers[0]]).toBe('000123');
     });
   }
+});
+
+describe('employee import addresses', () => {
+  it('keeps legacy rows without an address', () => {
+    expect(splitEmployeeImport({ name: 'Teste', postalCode: '' })).toEqual({ employee: { name: 'Teste' }, address: undefined });
+  });
+  it('separates and validates address values preserving leading zeros', () => {
+    const { employee, address } = splitEmployeeImport({ name: 'Teste', postalCode: '01310-100', street: 'Paulista', number: '001', district: 'Bela Vista', city: 'São Paulo', state: 'SP' });
+    expect(employee).toEqual({ name: 'Teste' });
+    expect(addressSchema.parse(address)).toMatchObject({ postalCode: '01310100', number: '001', country: 'Brasil' });
+  });
+  it('rejects incomplete addresses', () => {
+    expect(addressSchema.safeParse({ postalCode: '01310100' }).success).toBe(false);
+  });
 });
